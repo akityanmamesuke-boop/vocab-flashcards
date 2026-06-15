@@ -115,6 +115,10 @@
         <button class="modeBtn on" data-mode="mean">意味</button>
         <button class="modeBtn" data-mode="pron">発音</button>
       </div>
+      <div style="display:flex;justify-content:center;margin-bottom:14px">
+        <button class="modeBtn on" data-order="seq">順番</button>
+        <button class="modeBtn" data-order="rand">ランダム</button>
+      </div>
       <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
       <p class="muted" style="text-align:center">カードをタップ:単語 →(タップ)→ 答え →(タップ)→ 次の単語</p>
     </div>
@@ -157,7 +161,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
   $('#tab-'+b.dataset.tab).classList.remove('hide');
   if (b.dataset.tab==='deck') renderDeck();
-  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; renderStudy(); }
+  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; studyOrder=[]; renderStudy(); }
 });
 
 // ---- 設定 ----
@@ -371,8 +375,14 @@ window.delCard = i => {
 };
 
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
-let studyIdx=0, studyStage=0, studyMode='mean';
+let studyIdx=0, studyStage=0, studyMode='mean', studyOrderType='seq', studyOrder=[];
 function studyCards(){ const d = getDecks().find(x=>x.id===currentDeckId); return d ? d.cards : []; }
+function shuffle(a){ for (let i=a.length-1; i>0; i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
+function buildOrder(){
+  studyOrder = [...Array(studyCards().length).keys()];
+  if (studyOrderType==='rand') shuffle(studyOrder);
+  studyIdx=0; studyStage=0;
+}
 function renderStudy(){
   const decks = getDecks();
   if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
@@ -380,9 +390,10 @@ function renderStudy(){
   $('#studyDeck').value = currentDeckId;
   const cards = studyCards();
   const el = $('#flash');
-  if (!cards.length){ el.innerHTML='<span class="muted">この単語帳は空です</span>'; el.onclick=null; return; }
-  if (studyIdx>=cards.length) studyIdx=0;
-  const c = cards[studyIdx];
+  if (!cards.length){ el.innerHTML='<span class="muted">この単語帳は空です</span>'; el.onclick=null; studyOrder=[]; return; }
+  if (studyOrder.length !== cards.length) buildOrder();
+  if (studyIdx >= studyOrder.length) studyIdx=0;
+  const c = cards[studyOrder[studyIdx]];
   if (studyStage===0){
     el.innerHTML = `<div class="big">${esc(c.word)}</div><div class="muted">（タップで${studyMode==='mean'?'意味':'発音'}）</div>`;
   } else {
@@ -393,20 +404,28 @@ function renderStudy(){
       body = `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`
            + `<div class="muted" style="margin-top:4px">´ = アクセント(強く読む位置)</div>`;
     }
-    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}（タップで次へ)</div>`;
+    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}（${studyOrderType==='rand'?'ランダム':'順番'}・タップで次へ)</div>`;
   }
   el.onclick = () => {
-    const cs = studyCards(); if (!cs.length) return;
+    if (!studyCards().length) return;
     if (studyStage===0) studyStage=1;
-    else { studyStage=0; studyIdx=(studyIdx+1)%cs.length; }
+    else {
+      studyStage=0; studyIdx++;
+      if (studyIdx >= studyOrder.length){ if (studyOrderType==='rand') buildOrder(); else studyIdx=0; }
+    }
     renderStudy();
   };
 }
-$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyIdx=0; studyStage=0; renderStudy(); };
-document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.modeBtn').forEach(x => x.classList.remove('on'));
+$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyOrder=[]; studyStage=0; renderStudy(); };
+document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
   studyMode = b.dataset.mode; studyStage = 0; renderStudy();
+});
+document.querySelectorAll('[data-order]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-order]').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  studyOrderType = b.dataset.order; buildOrder(); renderStudy();
 });
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
