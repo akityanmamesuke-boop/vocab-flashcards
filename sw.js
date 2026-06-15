@@ -1,4 +1,4 @@
-const CACHE = 'vocab-v2';
+const CACHE = 'vocab-v3';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -12,9 +12,15 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// ネット優先(更新を常に即反映)。オフライン時のみキャッシュを使う。
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Gemini API など外部通信は常にネットワークへ(キャッシュしない)
-  if (url.origin !== location.origin) return;
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  if (url.origin !== location.origin) return; // 外部API(Gemini等)は素通し
+  e.respondWith(
+    fetch(e.request).then(res => {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return res;
+    }).catch(() => caches.match(e.request))
+  );
 });
