@@ -116,7 +116,7 @@
         このブラウザ内(localStorage)にのみ保存され、外部には送信されません。
       </p>
       <label style="margin-top:12px">使用モデル</label>
-      <input type="text" id="model" value="gemini-2.0-flash">
+      <input type="text" id="model" value="gemini-2.5-flash">
     </div>
     <div class="card">
       <label>アプリとして使う</label>
@@ -144,10 +144,11 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
 
 // ---- 設定 ----
 $('#apiKey').value = localStorage.getItem(LS.key) || '';
-$('#model').value  = localStorage.getItem(LS.model) || 'gemini-2.0-flash';
+if (localStorage.getItem(LS.model) === 'gemini-2.0-flash') localStorage.setItem(LS.model, 'gemini-2.5-flash');
+$('#model').value  = localStorage.getItem(LS.model) || 'gemini-2.5-flash';
 $('#saveKey').onclick = () => {
   localStorage.setItem(LS.key, $('#apiKey').value.trim());
-  localStorage.setItem(LS.model, $('#model').value.trim() || 'gemini-2.0-flash');
+  localStorage.setItem(LS.model, $('#model').value.trim() || 'gemini-2.5-flash');
   $('#keyMsg').textContent = '保存しました';
   setTimeout(()=>$('#keyMsg').textContent='',1500);
 };
@@ -189,7 +190,7 @@ $('#analyze').onclick = async () => {
   const key = localStorage.getItem(LS.key);
   if (!key) { alert('先に「設定」タブで API キーを保存してください'); return; }
   if (!imgB64) return;
-  const model = localStorage.getItem(LS.model) || 'gemini-2.0-flash';
+  const model = localStorage.getItem(LS.model) || 'gemini-2.5-flash';
   const btn = $('#analyze');
   btn.disabled = true;
   $('#scanMsg').innerHTML = '<span class="spinner"></span> 読み取り中…';
