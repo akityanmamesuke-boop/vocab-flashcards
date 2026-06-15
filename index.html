@@ -333,10 +333,28 @@ document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
 });
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-// 発音記号の強勢記号(ˈ第一・ˌ第二)を消し、その音節の上にアクセント記号を表示
+// 発音記号の強勢記号(ˈ第一・ˌ第二)を消し、その音節内の最初の母音の真上にアクセント記号を表示
+const IPA_VOWELS = 'aeiouyɛɔəʊɪøœɐɑæʌɒɜɨʉɯɤɵɞɘɶ';
 function fmtPron(p){
-  return esc(p).replace(/([ˈˌ])([^ˈˌ.\s]*)/g, (m, mark, syl) =>
-    `<span class="${mark==='ˈ'?'acc1':'acc2'}">${syl}</span>`);
+  return esc(p).replace(/([ˈˌ])([^ˈˌ.\s]*)/g, (mAll, mark, syl) => {
+    const cls = mark==='ˈ' ? 'acc1' : 'acc2';
+    const chars = [...syl];
+    let out = '', marked = false;
+    for (let i = 0; i < chars.length; i++){
+      const ch = chars[i];
+      if (!marked && IPA_VOWELS.includes(ch.toLowerCase())){
+        let v = ch; // 母音に続く結合記号(鼻音化など)はまとめる。長音ːは外に出す
+        while (i+1 < chars.length && /[̀-ͯ]/.test(chars[i+1])) v += chars[++i];
+        out += `<span class="${cls}">${v}</span>`;
+        marked = true;
+      } else {
+        out += ch;
+      }
+    }
+    if (!marked && chars.length) // 母音が無ければ先頭文字にマーク
+      out = `<span class="${cls}">${chars[0]}</span>` + chars.slice(1).join('');
+    return out;
+  });
 }
 
 // ---- PWA ----
