@@ -142,6 +142,7 @@
         <button class="modeBtn" data-mode="pron">発音</button>
         <button class="modeBtn" data-mode="word">単語のみ</button>
         <button class="modeBtn" data-mode="meanrev">意味→単語</button>
+        <button class="modeBtn" data-mode="pronrev">発音→単語</button>
       </div>
       <div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         <button class="modeBtn on" data-order="seq">順番</button>
@@ -536,8 +537,9 @@ function renderStudy(){
   if (studyMode==='word'){
     el.innerHTML = `${wordHtml}${spk}${num}`;
   } else if (studyStage===0){
-    // 問題面。意味→単語のときは意味を出し、答え(単語)はまだ読み上げない
+    // 問題面。意味→単語/発音→単語のときは答え(単語)をまだ読み上げない
     if (studyMode==='meanrev') el.innerHTML = meanHtml;
+    else if (studyMode==='pronrev') el.innerHTML = pronHtml;
     else el.innerHTML = `${wordHtml}${spk}`;
   } else {
     const body = studyMode==='mean' ? meanHtml : studyMode==='pron' ? pronHtml : wordHtml;
