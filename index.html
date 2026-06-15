@@ -114,7 +114,10 @@
       <div class="card">
         <div class="row" style="justify-content:space-between">
           <button class="ghost btn" id="backToDecks">← 一覧へ</button>
-          <button class="del" id="delDeck">この単語帳を削除</button>
+          <span style="display:flex;gap:8px">
+            <button class="ghost btn" id="shareDeck">📤 共有</button>
+            <button class="del" id="delDeck">削除</button>
+          </span>
         </div>
         <div style="margin-top:10px">
           <span class="word" id="deckTitle"></span> <span id="deckCount" class="muted"></span>
@@ -405,6 +408,36 @@ window.delCard = i => {
   renderDeckDetail();
 };
 
+// ---- 共有(リンクで他人に渡す / リンクから取り込む) ----
+$('#shareDeck').onclick = async () => {
+  const deck = getDecks().find(d=>d.id===currentDeckId);
+  if (!deck) return;
+  const payload = btoa(unescape(encodeURIComponent(JSON.stringify({ n:deck.name, c:deck.cards }))));
+  const url = location.origin + location.pathname + '#import=' + payload;
+  try {
+    if (navigator.share) await navigator.share({ title:deck.name, text:`単語帳「${deck.name}」(${deck.cards.length}語)`, url });
+    else { await navigator.clipboard.writeText(url); alert('共有リンクをコピーしました。LINEなどで相手に送ってください。'); }
+  } catch (e) { /* 共有キャンセル時は何もしない */ }
+};
+function checkImport(){
+  const m = location.hash.match(/import=(.+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname);
+  let data;
+  try { data = JSON.parse(decodeURIComponent(escape(atob(m[1])))); }
+  catch (e) { alert('共有データを読み込めませんでした'); return; }
+  const name = data.n || '共有単語帳';
+  const cards = Array.isArray(data.c) ? data.c : [];
+  if (!cards.length){ alert('共有データに単語がありません'); return; }
+  if (!confirm(`単語帳「${name}」(${cards.length}語)を取り込みますか?`)) return;
+  const decks = getDecks();
+  const id = newDeckId();
+  decks.push({ id, name, cards });
+  saveDecks(decks);
+  currentDeckId = id;
+  alert(`「${name}」を取り込みました。「単語帳」タブで確認できます。`);
+}
+
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
 let studyIdx=0, studyStage=0, studyMode='mean', studyOrderType='seq', studyOrder=[];
 function studyCards(){ const d = getDecks().find(x=>x.id===currentDeckId); return d ? d.cards : []; }
@@ -479,6 +512,9 @@ function fmtPron(p){
     return out;
   });
 }
+
+// ---- 起動時:共有リンクからの取り込み ----
+checkImport();
 
 // ---- PWA ----
 if ('serviceWorker' in navigator) {
