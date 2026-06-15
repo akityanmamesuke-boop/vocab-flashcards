@@ -142,7 +142,7 @@
   <section id="tab-study" class="hide">
     <div class="card">
       <select id="studyDeck" style="width:100%;margin-bottom:12px"></select>
-      <button class="ghost btn" id="studyMistakes" style="width:100%;margin-bottom:12px">⚠ 間違えた単語だけ学習</button>
+      <select id="mistakeSel" style="width:100%;margin-bottom:12px"></select>
       <div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         <button class="modeBtn on" data-mode="mean">意味</button>
         <button class="modeBtn" data-mode="pron">発音</button>
@@ -195,7 +195,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
   $('#tab-'+b.dataset.tab).classList.remove('hide');
   if (b.dataset.tab==='deck'){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
-  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; studyOrder=[]; studyDone=false; renderStudy(); }
+  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; studyOrder=[]; studyDone=false; studyMistakeMode=null; renderStudy(); }
 });
 
 // ---- 設定 ----
@@ -347,6 +347,17 @@ function fillDeckOptions(sel, withNew){
   const decks = getDecks();
   sel.innerHTML = decks.map(d=>`<option value="${d.id}">${esc(d.name)}（${d.cards.length}）</option>`).join('')
     + (withNew ? '<option value="__new__">＋ 新しい単語帳…</option>' : '');
+}
+function fillMistakeOptions(){
+  const decks = getDecks();
+  const total = decks.reduce((s,d)=>s+((d.mistakes||[]).length),0);
+  const withMiss = decks.filter(d=>(d.mistakes||[]).length);
+  let html = '<option value="">⚠ 間違えた単語を復習…</option>';
+  if (total){
+    html += `<option value="all">すべての単語帳の間違い（${total}）</option>`;
+    html += withMiss.map(d=>`<option value="${d.id}">「${esc(d.name)}」の間違い（${d.mistakes.length}）</option>`).join('');
+  }
+  $('#mistakeSel').innerHTML = html;
 }
 function promptNewDeck(){
   const name = (prompt('新しい単語帳の名前') || '').trim();
@@ -531,7 +542,21 @@ function checkImport(){
 
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
 let studyIdx=0, studyStage=0, studyMode='mean', studyOrderType='seq', studyOrder=[], studyDone=false;
-function studyCards(){ const d = getDecks().find(x=>x.id===currentDeckId); return d ? d.cards : []; }
+let studyMistakeMode=null; // null=通常 / 'all'=全単語帳の間違い / deckId=その単語帳の間違い
+function studyCards(){
+  const decks = getDecks();
+  if (studyMistakeMode==='all'){
+    const out=[];
+    decks.forEach(d=>(d.mistakes||[]).forEach(c=>out.push({...c,_deckId:d.id})));
+    return out;
+  }
+  if (studyMistakeMode){
+    const d = decks.find(x=>x.id===studyMistakeMode);
+    return d ? (d.mistakes||[]).map(c=>({...c,_deckId:d.id})) : [];
+  }
+  const d = decks.find(x=>x.id===currentDeckId);
+  return d ? d.cards : [];
+}
 function shuffle(a){ for (let i=a.length-1; i>0; i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
 function buildOrder(){
   studyOrder = [...Array(studyCards().length).keys()];
@@ -551,23 +576,23 @@ function deckLang(id){ const d = getDecks().find(x=>x.id===(id||currentDeckId));
 window.speakCurrent = ev => {
   if (ev) ev.stopPropagation();
   const c = studyCards()[studyOrder[studyIdx]];
-  if (c) speak(c.word, deckLang());
+  if (c) speak(c.word, deckLang(c._deckId));
 };
 window.speakDeckCard = i => {
   const d = getDecks().find(x=>x.id===currentDeckId);
   if (d && d.cards[i]) speak(d.cards[i].word, d.lang);
 };
-// 間違えた単語を専用リストに追加
+// 間違えた単語を、その単語が属する単語帳の間違いリストに追加
 window.markMistake = ev => {
   if (ev) ev.stopPropagation();
   const c = studyCards()[studyOrder[studyIdx]];
   if (!c) return;
   const decks = getDecks();
-  let md = decks.find(d=>d.mistake);
-  if (!md){ md = { id:newDeckId(), name:'間違えた単語', cards:[], mistake:true }; decks.push(md); }
-  if (!md.cards.some(x=>x.word===c.word && x.mean===c.mean)) md.cards.push({ word:c.word, pron:c.pron, mean:c.mean });
-  const cur = decks.find(d=>d.id===currentDeckId);
-  if (cur && cur.lang && !md.lang) md.lang = cur.lang;
+  const did = c._deckId || currentDeckId;
+  const d = decks.find(x=>x.id===did);
+  if (!d) return;
+  if (!d.mistakes) d.mistakes = [];
+  if (!d.mistakes.some(x=>x.word===c.word && x.mean===c.mean)) d.mistakes.push({ word:c.word, pron:c.pron, mean:c.mean });
   saveDecks(decks);
   if (ev && ev.target){ ev.target.textContent='✓ 追加済み'; ev.target.disabled=true; }
 };
@@ -578,9 +603,14 @@ function advanceCard(){
 }
 window.studyAgain = () => { studyDone=false; buildOrder(); renderStudy(); };
 window.studyMistakesFromEnd = () => {
-  const md = getDecks().find(d=>d.mistake);
-  if (!md || !md.cards.length){ alert('間違えた単語はありません'); return; }
-  currentDeckId = md.id; studyDone=false; studyOrder=[]; studyIdx=0; renderStudy();
+  // 今やっていた単語帳の間違い(間違い学習中なら同じ範囲)を復習
+  const target = studyMistakeMode || currentDeckId;
+  const decks = getDecks();
+  const has = target==='all'
+    ? decks.some(d=>(d.mistakes||[]).length)
+    : (decks.find(d=>d.id===target)?.mistakes||[]).length;
+  if (!has){ alert('間違えた単語はありません'); return; }
+  studyMistakeMode = target; studyDone=false; studyOrder=[]; studyStage=0; studyIdx=0; renderStudy();
 };
 window.studyEnd = () => { document.querySelector('.tabs button[data-tab="deck"]').click(); };
 function renderStudy(){
@@ -588,6 +618,9 @@ function renderStudy(){
   if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
   fillDeckOptions($('#studyDeck'), false);
   $('#studyDeck').value = currentDeckId;
+  fillMistakeOptions();
+  $('#mistakeSel').value = studyMistakeMode || '';
+  $('#studyDeck').disabled = !!studyMistakeMode;
   const cards = studyCards();
   const el = $('#flash');
   if (!cards.length){ el.innerHTML='<span class="muted">この単語帳は空です</span>'; el.onclick=null; studyOrder=[]; return; }
@@ -630,11 +663,10 @@ function renderStudy(){
     renderStudy();
   };
 }
-$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyOrder=[]; studyStage=0; studyDone=false; renderStudy(); };
-$('#studyMistakes').onclick = () => {
-  const md = getDecks().find(d=>d.mistake);
-  if (!md || !md.cards.length){ alert('「間違えた単語」はまだありません'); return; }
-  currentDeckId = md.id; studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy();
+$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyMistakeMode=null; studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy(); };
+$('#mistakeSel').onchange = () => {
+  studyMistakeMode = $('#mistakeSel').value || null;
+  studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy();
 };
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
