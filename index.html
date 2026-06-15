@@ -66,8 +66,13 @@
   <!-- 取り込み -->
   <section id="tab-scan">
     <div class="card">
-      <label>プリントの写真を選択(またはカメラで撮影)</label>
-      <input type="file" id="file" accept="image/*" capture="environment">
+      <label>プリントの画像を取り込む</label>
+      <input type="file" id="fileCamera" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="filePick" accept="image/*" style="display:none">
+      <div class="row">
+        <button class="btn" id="btnCamera">📷 写真を撮る</button>
+        <button class="ghost btn" id="btnPick">🖼 ファイルから選択</button>
+      </div>
       <img id="preview">
       <div class="row" style="margin-top:12px">
         <button class="btn" id="analyze" disabled>単語を読み取る</button>
@@ -189,8 +194,11 @@ $('#saveKey').onclick = () => {
 
 // ---- 画像選択(大きい写真はメモリ節約のため縮小・圧縮してから扱う) ----
 let imgB64 = null, imgMime = null;
-$('#file').onchange = e => {
-  const f = e.target.files[0];
+$('#btnCamera').onclick = () => $('#fileCamera').click();
+$('#btnPick').onclick = () => $('#filePick').click();
+$('#fileCamera').onchange = e => handleFile(e.target.files[0]);
+$('#filePick').onchange = e => handleFile(e.target.files[0]);
+function handleFile(f){
   if (!f) return;
   $('#analyze').disabled = true;
   $('#scanMsg').textContent = '画像を準備中…';
