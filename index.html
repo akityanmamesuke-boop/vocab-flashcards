@@ -48,6 +48,8 @@
   .modeBtn:last-child { border-radius:0 8px 8px 0; }
   .modeBtn + .modeBtn { border-left:0; }
   .modeBtn.on { background:var(--accent); color:#fff; }
+  .spk { display:inline-flex; align-items:center; justify-content:center; background:#eee; border:0; border-radius:50%; width:52px; height:52px; font-size:24px; cursor:pointer; margin-top:14px; }
+  .spk.sm { width:38px; height:38px; font-size:18px; margin:0; }
   .acc1, .acc2 { position:relative; display:inline-block; }
   .acc1::before, .acc2::before { position:absolute; left:0; right:0; top:-0.26em; text-align:center; font-size:0.8em; line-height:1; }
   .acc1::before { content:'´'; }
@@ -197,7 +199,7 @@ $('#saveKey').onclick = () => {
 };
 
 // ---- 画像選択(大きい写真はメモリ節約のため縮小・圧縮してから扱う) ----
-let imgB64 = null, imgMime = null;
+let imgB64 = null, imgMime = null, lastLang = '';
 $('#btnCamera').onclick = () => $('#fileCamera').click();
 $('#btnPick').onclick = () => $('#filePick').click();
 $('#fileCamera').onchange = e => handleFile(e.target.files[0]);
@@ -242,8 +244,8 @@ $('#analyze').onclick = async () => {
   $('#scanMsg').innerHTML = '<span class="spinner"></span> 読み取り中…';
 
   const prompt = `この画像は語学のプリントです。掲載されている見出し語をすべて抽出してください。
-言語は単語から自動判別してください(例: ドイツ語・英語など)。
-各語について次を返してください。
+lang: 単語の言語のBCP-47コード(例: ドイツ語=de-DE、英語=en-US、フランス語=fr-FR)を1つ返す。
+words: 各語について次を返す。
 - word: 単語。画像から正確に読み取る。
 - pronunciation: 発音記号(IPA)。プリントに記載があればそれを書き写す。空欄や記載がない場合は、あなたの知識でその単語の正しい発音記号を補完して必ず埋める。
 - meaning: 日本語の意味。プリントに記載があればそれを使う。空欄や記載がない場合は、あなたの知識で正しい意味を補完して必ず埋める。
@@ -257,16 +259,23 @@ $('#analyze').onclick = async () => {
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            word: { type:"STRING" },
-            pronunciation: { type:"STRING" },
-            meaning: { type:"STRING" }
-          },
-          required: ["word","pronunciation","meaning"]
-        }
+        type: "OBJECT",
+        properties: {
+          lang: { type:"STRING" },
+          words: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                word: { type:"STRING" },
+                pronunciation: { type:"STRING" },
+                meaning: { type:"STRING" }
+              },
+              required: ["word","pronunciation","meaning"]
+            }
+          }
+        },
+        required: ["lang","words"]
       }
     }
   };
@@ -278,7 +287,9 @@ $('#analyze').onclick = async () => {
     if (!res.ok) throw new Error(data.error?.message || ('HTTP '+res.status));
     const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!txt) throw new Error('応答が空でした');
-    const items = JSON.parse(txt);
+    const parsed = JSON.parse(txt);
+    const items = parsed.words || [];
+    lastLang = parsed.lang || '';
     fillResult(items);
     $('#scanMsg').textContent = `${items.length} 語を読み取りました`;
   } catch (err) {
@@ -348,6 +359,7 @@ $('#addDeck').onclick = () => {
   const decks = getDecks();
   const deck = decks.find(x=>x.id===deckId);
   if (!deck){ alert('追加先の単語帳を選んでください'); return; }
+  if (lastLang && !deck.lang) deck.lang = lastLang;
   let n = 0;
   $('#resultTbl tbody').querySelectorAll('tr').forEach(tr=>{
     const w = tr.querySelector('.c-word').value.trim();
@@ -386,7 +398,10 @@ function renderDeckDetail(){
         <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${fmtPron(c.pron)}]</span>`:''}</div>
         <div class="muted">${esc(c.mean)}</div>
       </div>
-      <button class="del" onclick="delCard(${i})">削除</button>
+      <span style="display:flex;gap:8px;align-items:center">
+        <button class="spk sm" onclick="speakDeckCard(${i})">🔊</button>
+        <button class="del" onclick="delCard(${i})">削除</button>
+      </span>
     </div>`).join('') : '<p class="muted">まだ単語がありません</p>';
 }
 function showDeckList(){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
@@ -449,6 +464,26 @@ function buildOrder(){
   if (studyOrderType==='rand') shuffle(studyOrder);
   studyIdx=0; studyStage=0;
 }
+// ---- 音声読み上げ ----
+function speak(text, lang){
+  if (!('speechSynthesis' in window)){ alert('この端末は音声読み上げに対応していません'); return; }
+  const u = new SpeechSynthesisUtterance(text);
+  if (lang) u.lang = lang;
+  u.rate = 0.9;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+function deckLang(id){ const d = getDecks().find(x=>x.id===(id||currentDeckId)); return d && d.lang; }
+window.speakCurrent = ev => {
+  if (ev) ev.stopPropagation();
+  const c = studyCards()[studyOrder[studyIdx]];
+  if (c) speak(c.word, deckLang());
+};
+window.speakDeckCard = i => {
+  const d = getDecks().find(x=>x.id===currentDeckId);
+  if (d && d.cards[i]) speak(d.cards[i].word, d.lang);
+};
+
 function advanceCard(){
   studyIdx++;
   if (studyIdx >= studyOrder.length){ if (studyOrderType==='rand') buildOrder(); else studyIdx=0; }
@@ -465,15 +500,16 @@ function renderStudy(){
   if (studyIdx >= studyOrder.length) studyIdx=0;
   const c = cards[studyOrder[studyIdx]];
   const num = `<div class="muted">${studyIdx+1} / ${cards.length}</div>`;
+  const spk = `<div><button class="spk" onclick="speakCurrent(event)">🔊</button></div>`;
   if (studyMode==='word'){
-    el.innerHTML = `<div class="big">${esc(c.word)}</div>${num}`;
+    el.innerHTML = `<div class="big">${esc(c.word)}</div>${spk}${num}`;
   } else if (studyStage===0){
-    el.innerHTML = `<div class="big">${esc(c.word)}</div>`;
+    el.innerHTML = `<div class="big">${esc(c.word)}</div>${spk}`;
   } else {
     const body = studyMode==='mean'
       ? `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`
       : `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`;
-    el.innerHTML = `${body}${num}`;
+    el.innerHTML = `${body}${spk}${num}`;
   }
   el.onclick = () => {
     if (!studyCards().length) return;
