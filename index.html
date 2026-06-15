@@ -137,6 +137,7 @@
   <section id="tab-study" class="hide">
     <div class="card">
       <select id="studyDeck" style="width:100%;margin-bottom:12px"></select>
+      <button class="ghost btn" id="studyMistakes" style="width:100%;margin-bottom:12px">⚠ 間違えた単語だけ学習</button>
       <div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
         <button class="modeBtn on" data-mode="mean">意味</button>
         <button class="modeBtn" data-mode="pron">発音</button>
@@ -555,6 +556,11 @@ function renderStudy(){
   };
 }
 $('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyOrder=[]; studyStage=0; renderStudy(); };
+$('#studyMistakes').onclick = () => {
+  const md = getDecks().find(d=>d.mistake);
+  if (!md || !md.cards.length){ alert('「間違えた単語」はまだありません'); return; }
+  currentDeckId = md.id; studyOrder=[]; studyStage=0; studyIdx=0; renderStudy();
+};
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
