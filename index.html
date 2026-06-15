@@ -94,16 +94,28 @@
 
   <!-- 単語帳 -->
   <section id="tab-deck" class="hide">
-    <div class="card">
-      <div class="row">
-        <select id="deckSelect" style="flex:1"></select>
-        <button class="ghost btn" id="newDeck">＋新規</button>
+    <!-- 単語帳の一覧 -->
+    <div id="deckListView">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <span class="muted">単語帳を選んでください</span>
+          <button class="ghost btn" id="newDeck">＋新規</button>
+        </div>
+        <div id="deckIndex"></div>
       </div>
-      <div class="row" style="justify-content:space-between; margin-top:8px">
-        <span id="deckCount" class="muted"></span>
-        <button class="del" id="delDeck">この単語帳を削除</button>
+    </div>
+    <!-- 単語帳の中身 -->
+    <div id="deckDetailView" class="hide">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <button class="ghost btn" id="backToDecks">← 一覧へ</button>
+          <button class="del" id="delDeck">この単語帳を削除</button>
+        </div>
+        <div style="margin-top:10px">
+          <span class="word" id="deckTitle"></span> <span id="deckCount" class="muted"></span>
+        </div>
+        <div id="deckList"></div>
       </div>
-      <div id="deckList"></div>
     </div>
   </section>
 
@@ -160,7 +172,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   b.classList.add('on');
   ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
   $('#tab-'+b.dataset.tab).classList.remove('hide');
-  if (b.dataset.tab==='deck') renderDeck();
+  if (b.dataset.tab==='deck'){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
   if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; studyOrder=[]; renderStudy(); }
 });
 
@@ -338,14 +350,25 @@ $('#addDeck').onclick = () => {
   $('#resultTbl tbody').innerHTML='';
 };
 
+// 一覧(単語帳の名前と語数)。タップで中身へ。
 function renderDeck(){
   const decks = getDecks();
-  if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
-  fillDeckOptions($('#deckSelect'), false);
-  $('#deckSelect').value = currentDeckId;
-  const cards = decks.find(d=>d.id===currentDeckId).cards;
-  $('#deckCount').textContent = cards.length + ' 語';
-  $('#deckList').innerHTML = cards.length ? cards.map((c,i)=>`
+  $('#deckIndex').innerHTML = decks.map(d=>`
+    <div class="deck-item" style="cursor:pointer" onclick="openDeck('${d.id}')">
+      <div>
+        <div class="word">${esc(d.name)}</div>
+        <div class="muted">${d.cards.length} 語</div>
+      </div>
+      <span class="muted" style="font-size:20px">›</span>
+    </div>`).join('');
+}
+// 中身(選んだ単語帳の単語一覧)
+function renderDeckDetail(){
+  const deck = getDecks().find(d=>d.id===currentDeckId);
+  if (!deck){ showDeckList(); return; }
+  $('#deckTitle').textContent = deck.name;
+  $('#deckCount').textContent = `(${deck.cards.length} 語)`;
+  $('#deckList').innerHTML = deck.cards.length ? deck.cards.map((c,i)=>`
     <div class="deck-item">
       <div>
         <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${fmtPron(c.pron)}]</span>`:''}</div>
@@ -354,24 +377,25 @@ function renderDeck(){
       <button class="del" onclick="delCard(${i})">削除</button>
     </div>`).join('') : '<p class="muted">まだ単語がありません</p>';
 }
-$('#deckSelect').onchange = () => { currentDeckId = $('#deckSelect').value; renderDeck(); };
-$('#newDeck').onclick = () => { const id = promptNewDeck(); if (id){ currentDeckId = id; renderDeck(); } };
+function showDeckList(){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
+window.openDeck = id => { currentDeckId = id; $('#deckListView').classList.add('hide'); $('#deckDetailView').classList.remove('hide'); renderDeckDetail(); };
+$('#backToDecks').onclick = showDeckList;
+$('#newDeck').onclick = () => { const id = promptNewDeck(); if (id) renderDeck(); };
 $('#delDeck').onclick = () => {
   const decks = getDecks();
   if (decks.length <= 1){ alert('単語帳は最低1つ必要です'); return; }
   const deck = decks.find(d=>d.id===currentDeckId);
   if (!confirm(`「${deck.name}」を削除しますか?(中の単語も消えます)`)) return;
-  const left = decks.filter(d=>d.id!==currentDeckId);
-  saveDecks(left);
-  currentDeckId = left[0].id;
-  renderDeck();
+  saveDecks(decks.filter(d=>d.id!==currentDeckId));
+  currentDeckId = getDecks()[0].id;
+  showDeckList();
 };
 window.delCard = i => {
   const decks = getDecks();
   const deck = decks.find(d=>d.id===currentDeckId);
   deck.cards.splice(i,1);
   saveDecks(decks);
-  renderDeck();
+  renderDeckDetail();
 };
 
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
