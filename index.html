@@ -35,7 +35,7 @@
   #preview { max-width:100%; border-radius:8px; margin-top:8px; display:none; }
   .deck-item { display:flex; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
   .word { font-weight:700; font-size:16px; }
-  .pron { color:#666; font-family:"Doulos SIL","Charis SIL",serif; }
+  .pron { color:#666; font-family:"Doulos SIL","Charis SIL",serif; line-height:1.9; }
   .flash { text-align:center; padding:48px 16px; min-height:160px; cursor:pointer; user-select:none; }
   .flash .big { font-size:34px; font-weight:700; }
   .spinner { display:inline-block; width:16px; height:16px; border:3px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; }
@@ -46,8 +46,12 @@
   .modeBtn:first-child { border-radius:8px 0 0 8px; }
   .modeBtn:last-child { border-radius:0 8px 8px 0; border-left:0; }
   .modeBtn.on { background:var(--accent); color:#fff; }
+  .acc1, .acc2 { position:relative; display:inline-block; }
   .acc1 { color:#e3344f; font-weight:700; }
   .acc2 { color:#e08a00; font-weight:600; }
+  .acc1::before, .acc2::before { position:absolute; left:0; right:0; top:-0.72em; text-align:center; font-size:0.95em; line-height:1; }
+  .acc1::before { content:'´'; color:#e3344f; }
+  .acc2::before { content:'ˋ'; color:#e08a00; }
 </style>
 </head>
 <body>
@@ -329,10 +333,10 @@ document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
 });
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-// 発音記号の強勢記号(ˈ第一・ˌ第二)とその音節を色付けしてアクセント位置を強調
+// 発音記号の強勢記号(ˈ第一・ˌ第二)を消し、その音節の上にアクセント記号を表示
 function fmtPron(p){
   return esc(p).replace(/([ˈˌ])([^ˈˌ.\s]*)/g, (m, mark, syl) =>
-    `<span class="${mark==='ˈ'?'acc1':'acc2'}">${mark}${syl}</span>`);
+    `<span class="${mark==='ˈ'?'acc1':'acc2'}">${syl}</span>`);
 }
 
 // ---- PWA ----
