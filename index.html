@@ -125,6 +125,10 @@
         <div style="margin-top:10px">
           <span class="word" id="deckTitle"></span> <span id="deckCount" class="muted"></span>
         </div>
+        <div class="row" style="margin-top:8px">
+          <label style="margin:0">読み上げ言語</label>
+          <select id="deckLangSel" style="flex:1"></select>
+        </div>
         <div id="deckList"></div>
       </div>
     </div>
@@ -386,12 +390,23 @@ function renderDeck(){
       <span class="muted" style="font-size:20px">›</span>
     </div>`).join('');
 }
+const LANGS = [
+  ['', '自動 / 未設定'], ['en-US','英語'], ['de-DE','ドイツ語'], ['fr-FR','フランス語'],
+  ['es-ES','スペイン語'], ['it-IT','イタリア語'], ['zh-CN','中国語'], ['ko-KR','韓国語'], ['ja-JP','日本語']
+];
+$('#deckLangSel').innerHTML = LANGS.map(([v,n])=>`<option value="${v}">${n}</option>`).join('');
+$('#deckLangSel').onchange = () => {
+  const decks = getDecks();
+  const d = decks.find(x=>x.id===currentDeckId);
+  if (d){ d.lang = $('#deckLangSel').value; saveDecks(decks); }
+};
 // 中身(選んだ単語帳の単語一覧)
 function renderDeckDetail(){
   const deck = getDecks().find(d=>d.id===currentDeckId);
   if (!deck){ showDeckList(); return; }
   $('#deckTitle').textContent = deck.name;
   $('#deckCount').textContent = `(${deck.cards.length} 語)`;
+  $('#deckLangSel').value = deck.lang || '';
   $('#deckList').innerHTML = deck.cards.length ? deck.cards.map((c,i)=>`
     <div class="deck-item">
       <div>
