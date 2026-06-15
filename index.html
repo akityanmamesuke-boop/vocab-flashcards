@@ -46,6 +46,8 @@
   .modeBtn:first-child { border-radius:8px 0 0 8px; }
   .modeBtn:last-child { border-radius:0 8px 8px 0; border-left:0; }
   .modeBtn.on { background:var(--accent); color:#fff; }
+  .acc1 { color:#e3344f; font-weight:700; }
+  .acc2 { color:#e08a00; font-weight:600; }
 </style>
 </head>
 <body>
@@ -284,7 +286,7 @@ function renderDeck(){
   $('#deckList').innerHTML = deck.length ? deck.map((c,i)=>`
     <div class="deck-item">
       <div>
-        <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${esc(c.pron)}]</span>`:''}</div>
+        <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${fmtPron(c.pron)}]</span>`:''}</div>
         <div class="muted">${esc(c.mean)}</div>
       </div>
       <button class="del" onclick="delCard(${i})">削除</button>
@@ -304,10 +306,14 @@ function renderStudy(){
   if (studyStage===0){
     el.innerHTML = `<div class="big">${esc(c.word)}</div><div class="muted">（タップで${studyMode==='mean'?'意味':'発音'}）</div>`;
   } else {
-    const ans = studyMode==='mean'
-      ? `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`
-      : `<div class="big pron" style="font-size:30px">${c.pron?'['+esc(c.pron)+']':'(発音なし)'}</div>`;
-    el.innerHTML = `${ans}<div class="muted">${studyIdx+1} / ${deck.length}（タップで次へ）</div>`;
+    let body;
+    if (studyMode==='mean'){
+      body = `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`;
+    } else {
+      body = `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`
+           + `<div class="muted" style="margin-top:4px"><span class="acc1">赤</span>=アクセント(強く読む位置)</div>`;
+    }
+    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${deck.length}（タップで次へ)</div>`;
   }
   el.onclick = () => {
     const d = getDeck(); if (!d.length) return;
@@ -323,6 +329,11 @@ document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
 });
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// 発音記号の強勢記号(ˈ第一・ˌ第二)とその音節を色付けしてアクセント位置を強調
+function fmtPron(p){
+  return esc(p).replace(/([ˈˌ])([^ˈˌ.\s]*)/g, (m, mark, syl) =>
+    `<span class="${mark==='ˈ'?'acc1':'acc2'}">${mark}${syl}</span>`);
+}
 
 // ---- PWA ----
 if ('serviceWorker' in navigator) {
