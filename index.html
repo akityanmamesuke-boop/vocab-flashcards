@@ -196,8 +196,12 @@ $('#analyze').onclick = async () => {
   $('#scanMsg').innerHTML = '<span class="spinner"></span> 読み取り中…';
 
   const prompt = `この画像は語学のプリントです。掲載されている見出し語をすべて抽出してください。
-各語について「単語(word)」「発音記号(pronunciation・プリントに記載があれば、なければ空文字)」「意味(meaning・日本語訳)」を返してください。
-手書きの解答や氏名・日付などのメタ情報は無視し、学習対象の単語のみ対象にします。`;
+言語は単語から自動判別してください(例: ドイツ語・英語など)。
+各語について次を返してください。
+- word: 単語。画像から正確に読み取る。
+- pronunciation: 発音記号(IPA)。プリントに記載があればそれを書き写す。空欄や記載がない場合は、あなたの知識でその単語の正しい発音記号を補完して必ず埋める。
+- meaning: 日本語の意味。プリントに記載があればそれを使う。空欄や記載がない場合は、あなたの知識で正しい意味を補完して必ず埋める。
+手書きの解答・氏名・日付・課題番号などのメタ情報は無視し、学習対象の単語のみ対象にします。`;
 
   const body = {
     contents: [{ parts: [
@@ -215,7 +219,7 @@ $('#analyze').onclick = async () => {
             pronunciation: { type:"STRING" },
             meaning: { type:"STRING" }
           },
-          required: ["word","meaning"]
+          required: ["word","pronunciation","meaning"]
         }
       }
     }
