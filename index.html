@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>単語帳アプリ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3b6ef5">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="単語帳">
+<style>
+  :root { --bg:#f5f5f7; --card:#fff; --line:#ddd; --accent:#3b6ef5; --danger:#e34; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:system-ui,"Hiragino Sans","Yu Gothic",sans-serif; background:var(--bg); color:#222;
+         padding-bottom:env(safe-area-inset-bottom); }
+  header { background:var(--accent); color:#fff; padding:calc(12px + env(safe-area-inset-top)) 16px 12px; font-weight:700; font-size:18px; }
+  .tabs { display:flex; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+  .tabs button { flex:1; padding:12px 4px; border:0; background:none; font-size:14px; cursor:pointer; color:#666; }
+  .tabs button.on { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:700; }
+  main { padding:16px; max-width:760px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  label { display:block; font-size:13px; color:#666; margin-bottom:4px; }
+  input[type=text], input[type=password], textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:16px; }
+  button.btn { background:var(--accent); color:#fff; border:0; padding:12px 16px; border-radius:8px; font-size:15px; cursor:pointer; }
+  button.btn:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:#eee; color:#333; }
+  button.del { background:none; border:0; color:var(--danger); cursor:pointer; font-size:14px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; font-size:14px; vertical-align:top; }
+  td input { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; font-size:15px; }
+  .muted { color:#888; font-size:13px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #preview { max-width:100%; border-radius:8px; margin-top:8px; display:none; }
+  .deck-item { display:flex; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .word { font-weight:700; font-size:16px; }
+  .pron { color:#666; font-family:"Doulos SIL","Charis SIL",serif; }
+  .flash { text-align:center; padding:48px 16px; min-height:160px; cursor:pointer; user-select:none; }
+  .flash .big { font-size:34px; font-weight:700; }
+  .spinner { display:inline-block; width:16px; height:16px; border:3px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .hide { display:none; }
+  #installBtn { margin-top:8px; }
+</style>
+</head>
+<body>
+<header>📒 単語帳アプリ</header>
+<div class="tabs">
+  <button data-tab="scan" class="on">📷 取り込み</button>
+  <button data-tab="deck">📚 単語帳</button>
+  <button data-tab="study">🎴 学習</button>
+  <button data-tab="set">⚙ 設定</button>
+</div>
+<main>
+
+  <!-- 取り込み -->
+  <section id="tab-scan">
+    <div class="card">
+      <label>プリントの写真を選択(またはカメラで撮影)</label>
+      <input type="file" id="file" accept="image/*" capture="environment">
+      <img id="preview">
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="analyze" disabled>単語を読み取る</button>
+        <span id="scanMsg" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card hide" id="resultCard">
+      <label>読み取り結果(編集できます)</label>
+      <table id="resultTbl">
+        <thead><tr><th>単語</th><th>発音</th><th>意味</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost btn" id="addRow">＋行を追加</button>
+        <button class="btn" id="addDeck">単語帳に追加</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 単語帳 -->
+  <section id="tab-deck" class="hide">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <span id="deckCount" class="muted"></span>
+        <button class="del" id="clearDeck">全削除</button>
+      </div>
+      <div id="deckList"></div>
+    </div>
+  </section>
+
+  <!-- 学習 -->
+  <section id="tab-study" class="hide">
+    <div class="card">
+      <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
+      <div class="row" style="justify-content:center">
+        <button class="ghost btn" id="prevCard">前へ</button>
+        <button class="btn" id="nextCard">次へ ▶</button>
+      </div>
+      <p class="muted" style="text-align:center">カードをタップで表(単語)／裏(意味)を切り替え</p>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-set" class="hide">
+    <div class="card">
+      <label>Gemini API キー</label>
+      <input type="password" id="apiKey" placeholder="AIza...">
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="saveKey">保存</button>
+        <span id="keyMsg" class="muted"></span>
+      </div>
+      <p class="muted">
+        キーは <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a> で無料取得できます。
+        このブラウザ内(localStorage)にのみ保存され、外部には送信されません。
+      </p>
+      <label style="margin-top:12px">使用モデル</label>
+      <input type="text" id="model" value="gemini-2.0-flash">
+    </div>
+    <div class="card">
+      <label>アプリとして使う</label>
+      <p class="muted">ホーム画面に追加すると、アプリのように全画面で起動できます。</p>
+      <button class="btn hide" id="installBtn">ホーム画面に追加</button>
+      <p class="muted" id="installHint">iPhoneは Safari の「共有」→「ホーム画面に追加」、Androidは Chrome のメニューから追加できます。</p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const LS = { key:'vocab_apikey', model:'vocab_model', deck:'vocab_deck' };
+
+// ---- タブ切替 ----
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
+  $('#tab-'+b.dataset.tab).classList.remove('hide');
+  if (b.dataset.tab==='deck') renderDeck();
+  if (b.dataset.tab==='study') { studyIdx=0; showFlash=false; renderStudy(); }
+});
+
+// ---- 設定 ----
+$('#apiKey').value = localStorage.getItem(LS.key) || '';
+$('#model').value  = localStorage.getItem(LS.model) || 'gemini-2.0-flash';
+$('#saveKey').onclick = () => {
+  localStorage.setItem(LS.key, $('#apiKey').value.trim());
+  localStorage.setItem(LS.model, $('#model').value.trim() || 'gemini-2.0-flash');
+  $('#keyMsg').textContent = '保存しました';
+  setTimeout(()=>$('#keyMsg').textContent='',1500);
+};
+
+// ---- 画像選択 ----
+let imgB64 = null, imgMime = null;
+$('#file').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  imgMime = f.type;
+  const r = new FileReader();
+  r.onload = () => {
+    imgB64 = r.result.split(',')[1];
+    $('#preview').src = r.result;
+    $('#preview').style.display = 'block';
+    $('#analyze').disabled = false;
+  };
+  r.readAsDataURL(f);
+};
+
+// ---- Gemini 解析 ----
+$('#analyze').onclick = async () => {
+  const key = localStorage.getItem(LS.key);
+  if (!key) { alert('先に「設定」タブで API キーを保存してください'); return; }
+  if (!imgB64) return;
+  const model = localStorage.getItem(LS.model) || 'gemini-2.0-flash';
+  const btn = $('#analyze');
+  btn.disabled = true;
+  $('#scanMsg').innerHTML = '<span class="spinner"></span> 読み取り中…';
+
+  const prompt = `この画像は語学のプリントです。掲載されている見出し語をすべて抽出してください。
+各語について「単語(word)」「発音記号(pronunciation・プリントに記載があれば、なければ空文字)」「意味(meaning・日本語訳)」を返してください。
+手書きの解答や氏名・日付などのメタ情報は無視し、学習対象の単語のみ対象にします。`;
+
+  const body = {
+    contents: [{ parts: [
+      { text: prompt },
+      { inline_data: { mime_type: imgMime, data: imgB64 } }
+    ]}],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            word: { type:"STRING" },
+            pronunciation: { type:"STRING" },
+            meaning: { type:"STRING" }
+          },
+          required: ["word","meaning"]
+        }
+      }
+    }
+  };
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || ('HTTP '+res.status));
+    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!txt) throw new Error('応答が空でした');
+    const items = JSON.parse(txt);
+    fillResult(items);
+    $('#scanMsg').textContent = `${items.length} 語を読み取りました`;
+  } catch (err) {
+    $('#scanMsg').textContent = 'エラー: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ---- 結果テーブル ----
+function rowHtml(w='',p='',m=''){
+  return `<tr>
+    <td><input class="c-word" value="${esc(w)}"></td>
+    <td><input class="c-pron" value="${esc(p)}"></td>
+    <td><input class="c-mean" value="${esc(m)}"></td>
+    <td><button class="del" onclick="this.closest('tr').remove()">×</button></td>
+  </tr>`;
+}
+function fillResult(items){
+  $('#resultTbl tbody').innerHTML = items.map(i=>rowHtml(i.word,i.pronunciation,i.meaning)).join('');
+  $('#resultCard').classList.remove('hide');
+}
+$('#addRow').onclick = () => $('#resultTbl tbody').insertAdjacentHTML('beforeend', rowHtml());
+$('#addDeck').onclick = () => {
+  const deck = getDeck();
+  let n = 0;
+  $('#resultTbl tbody').querySelectorAll('tr').forEach(tr=>{
+    const w = tr.querySelector('.c-word').value.trim();
+    if (!w) return;
+    deck.push({ word:w, pron:tr.querySelector('.c-pron').value.trim(), mean:tr.querySelector('.c-mean').value.trim() });
+    n++;
+  });
+  saveDeck(deck);
+  alert(n + ' 語を単語帳に追加しました');
+  $('#resultCard').classList.add('hide');
+  $('#resultTbl tbody').innerHTML='';
+};
+
+// ---- 単語帳データ ----
+function getDeck(){ try { return JSON.parse(localStorage.getItem(LS.deck))||[]; } catch { return []; } }
+function saveDeck(d){ localStorage.setItem(LS.deck, JSON.stringify(d)); }
+function renderDeck(){
+  const deck = getDeck();
+  $('#deckCount').textContent = deck.length + ' 語';
+  $('#deckList').innerHTML = deck.length ? deck.map((c,i)=>`
+    <div class="deck-item">
+      <div>
+        <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${esc(c.pron)}]</span>`:''}</div>
+        <div class="muted">${esc(c.mean)}</div>
+      </div>
+      <button class="del" onclick="delCard(${i})">削除</button>
+    </div>`).join('') : '<p class="muted">まだ単語がありません</p>';
+}
+window.delCard = i => { const d=getDeck(); d.splice(i,1); saveDeck(d); renderDeck(); };
+$('#clearDeck').onclick = () => { if(confirm('すべて削除しますか?')){ saveDeck([]); renderDeck(); } };
+
+// ---- 学習(フラッシュカード) ----
+let studyIdx=0, showFlash=false;
+function renderStudy(){
+  const deck = getDeck();
+  const el = $('#flash');
+  if (!deck.length){ el.innerHTML='<span class="muted">単語帳が空です</span>'; return; }
+  if (studyIdx>=deck.length) studyIdx=0;
+  const c = deck[studyIdx];
+  el.innerHTML = showFlash
+    ? `<div>${c.pron?`<div class="pron">[${esc(c.pron)}]</div>`:''}<div class="big" style="font-size:26px">${esc(c.mean)}</div></div>`
+    : `<div class="big">${esc(c.word)}</div><div class="muted">（タップで意味）</div>`;
+  el.onclick = () => { showFlash=!showFlash; renderStudy(); };
+}
+$('#nextCard').onclick = () => { const d=getDeck(); if(!d.length)return; studyIdx=(studyIdx+1)%d.length; showFlash=false; renderStudy(); };
+$('#prevCard').onclick = () => { const d=getDeck(); if(!d.length)return; studyIdx=(studyIdx-1+d.length)%d.length; showFlash=false; renderStudy(); };
+
+function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---- PWA ----
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  $('#installBtn').classList.remove('hide');
+  $('#installHint').classList.add('hide');
+});
+$('#installBtn').onclick = async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  $('#installBtn').classList.add('hide');
+};
+</script>
+</body>
+</html>
