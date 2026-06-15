@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="単語帳">
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <style>
   :root { --bg:#f5f5f7; --card:#fff; --line:#ddd; --accent:#3b6ef5; --danger:#e34; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -130,6 +131,7 @@
         </div>
         <div class="row" style="margin-top:10px">
           <button class="ghost btn" id="addCardBtn">＋ 単語を追加</button>
+          <span class="muted">長押しで並べ替え</span>
         </div>
         <div id="deckList"></div>
       </div>
@@ -340,6 +342,7 @@ function ensureDecks(){
 }
 let currentDeckId = ensureDecks()[0].id;
 let editingIdx = -1;
+let sortable = null;
 function fillDeckOptions(sel, withNew){
   const decks = getDecks();
   sel.innerHTML = decks.map(d=>`<option value="${d.id}">${esc(d.name)}（${d.cards.length}）</option>`).join('')
@@ -437,6 +440,20 @@ function renderDeckDetail(){
       </span>
     </div>`;
   }).join('') : '<p class="muted">まだ単語がありません</p>';
+  if (sortable){ sortable.destroy(); sortable = null; }
+  if (window.Sortable && editingIdx < 0 && deck.cards.length){
+    sortable = new Sortable($('#deckList'), {
+      animation:150, delay:250, delayOnTouchOnly:true,
+      onEnd: e => {
+        if (e.oldIndex === e.newIndex) return;
+        const decks = getDecks();
+        const d = decks.find(x=>x.id===currentDeckId);
+        const [moved] = d.cards.splice(e.oldIndex, 1);
+        d.cards.splice(e.newIndex, 0, moved);
+        saveDecks(decks); renderDeckDetail();
+      }
+    });
+  }
 }
 window.editCard = i => { editingIdx = i; renderDeckDetail(); };
 window.saveEdit = () => {
