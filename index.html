@@ -42,6 +42,10 @@
   @keyframes spin { to { transform:rotate(360deg); } }
   .hide { display:none; }
   #installBtn { margin-top:8px; }
+  .modeBtn { padding:8px 20px; border:1px solid var(--accent); background:#fff; color:var(--accent); font-size:14px; cursor:pointer; }
+  .modeBtn:first-child { border-radius:8px 0 0 8px; }
+  .modeBtn:last-child { border-radius:0 8px 8px 0; border-left:0; }
+  .modeBtn.on { background:var(--accent); color:#fff; }
 </style>
 </head>
 <body>
@@ -93,12 +97,12 @@
   <!-- 学習 -->
   <section id="tab-study" class="hide">
     <div class="card">
-      <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
-      <div class="row" style="justify-content:center">
-        <button class="ghost btn" id="prevCard">前へ</button>
-        <button class="btn" id="nextCard">次へ ▶</button>
+      <div style="display:flex;justify-content:center;margin-bottom:14px">
+        <button class="modeBtn on" data-mode="mean">意味</button>
+        <button class="modeBtn" data-mode="pron">発音</button>
       </div>
-      <p class="muted" style="text-align:center">カードをタップで表(単語)／裏(意味)を切り替え</p>
+      <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
+      <p class="muted" style="text-align:center">カードをタップ:単語 →(タップ)→ 答え →(タップ)→ 次の単語</p>
     </div>
   </section>
 
@@ -139,7 +143,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
   $('#tab-'+b.dataset.tab).classList.remove('hide');
   if (b.dataset.tab==='deck') renderDeck();
-  if (b.dataset.tab==='study') { studyIdx=0; showFlash=false; renderStudy(); }
+  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; renderStudy(); }
 });
 
 // ---- 設定 ----
@@ -289,21 +293,34 @@ function renderDeck(){
 window.delCard = i => { const d=getDeck(); d.splice(i,1); saveDeck(d); renderDeck(); };
 $('#clearDeck').onclick = () => { if(confirm('すべて削除しますか?')){ saveDeck([]); renderDeck(); } };
 
-// ---- 学習(フラッシュカード) ----
-let studyIdx=0, showFlash=false;
+// ---- 学習(タップで 単語 → 答え → 次の単語) ----
+let studyIdx=0, studyStage=0, studyMode='mean';
 function renderStudy(){
   const deck = getDeck();
   const el = $('#flash');
-  if (!deck.length){ el.innerHTML='<span class="muted">単語帳が空です</span>'; return; }
+  if (!deck.length){ el.innerHTML='<span class="muted">単語帳が空です</span>'; el.onclick=null; return; }
   if (studyIdx>=deck.length) studyIdx=0;
   const c = deck[studyIdx];
-  el.innerHTML = showFlash
-    ? `<div>${c.pron?`<div class="pron">[${esc(c.pron)}]</div>`:''}<div class="big" style="font-size:26px">${esc(c.mean)}</div></div>`
-    : `<div class="big">${esc(c.word)}</div><div class="muted">（タップで意味）</div>`;
-  el.onclick = () => { showFlash=!showFlash; renderStudy(); };
+  if (studyStage===0){
+    el.innerHTML = `<div class="big">${esc(c.word)}</div><div class="muted">（タップで${studyMode==='mean'?'意味':'発音'}）</div>`;
+  } else {
+    const ans = studyMode==='mean'
+      ? `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`
+      : `<div class="big pron" style="font-size:30px">${c.pron?'['+esc(c.pron)+']':'(発音なし)'}</div>`;
+    el.innerHTML = `${ans}<div class="muted">${studyIdx+1} / ${deck.length}（タップで次へ）</div>`;
+  }
+  el.onclick = () => {
+    const d = getDeck(); if (!d.length) return;
+    if (studyStage===0) studyStage=1;
+    else { studyStage=0; studyIdx=(studyIdx+1)%d.length; }
+    renderStudy();
+  };
 }
-$('#nextCard').onclick = () => { const d=getDeck(); if(!d.length)return; studyIdx=(studyIdx+1)%d.length; showFlash=false; renderStudy(); };
-$('#prevCard').onclick = () => { const d=getDeck(); if(!d.length)return; studyIdx=(studyIdx-1+d.length)%d.length; showFlash=false; renderStudy(); };
+document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.modeBtn').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  studyMode = b.dataset.mode; studyStage = 0; renderStudy();
+});
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
