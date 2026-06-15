@@ -23,6 +23,7 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
   label { display:block; font-size:13px; color:#666; margin-bottom:4px; }
   input[type=text], input[type=password], textarea { width:100%; padding:10px; border:1px solid var(--line); border-radius:8px; font-size:16px; }
+  select { padding:10px; border:1px solid var(--line); border-radius:8px; font-size:15px; background:#fff; color:#222; }
   button.btn { background:var(--accent); color:#fff; border:0; padding:12px 16px; border-radius:8px; font-size:15px; cursor:pointer; }
   button.btn:disabled { opacity:.5; cursor:default; }
   button.ghost { background:#eee; color:#333; }
@@ -47,11 +48,9 @@
   .modeBtn:last-child { border-radius:0 8px 8px 0; border-left:0; }
   .modeBtn.on { background:var(--accent); color:#fff; }
   .acc1, .acc2 { position:relative; display:inline-block; }
-  .acc1 { color:#e3344f; font-weight:700; }
-  .acc2 { color:#e08a00; font-weight:600; }
   .acc1::before, .acc2::before { position:absolute; left:0; right:0; top:-0.52em; text-align:center; font-size:0.8em; line-height:1; }
-  .acc1::before { content:'´'; color:#e3344f; }
-  .acc2::before { content:'ˋ'; color:#e08a00; }
+  .acc1::before { content:'´'; }
+  .acc2::before { content:'ˋ'; }
 </style>
 </head>
 <body>
@@ -84,7 +83,11 @@
       </table>
       <div class="row" style="margin-top:12px">
         <button class="ghost btn" id="addRow">＋行を追加</button>
-        <button class="btn" id="addDeck">単語帳に追加</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <label style="margin:0">追加先</label>
+        <select id="targetDeck" style="flex:1"></select>
+        <button class="btn" id="addDeck">追加</button>
       </div>
     </div>
   </section>
@@ -92,9 +95,13 @@
   <!-- 単語帳 -->
   <section id="tab-deck" class="hide">
     <div class="card">
-      <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <select id="deckSelect" style="flex:1"></select>
+        <button class="ghost btn" id="newDeck">＋新規</button>
+      </div>
+      <div class="row" style="justify-content:space-between; margin-top:8px">
         <span id="deckCount" class="muted"></span>
-        <button class="del" id="clearDeck">全削除</button>
+        <button class="del" id="delDeck">この単語帳を削除</button>
       </div>
       <div id="deckList"></div>
     </div>
@@ -103,6 +110,7 @@
   <!-- 学習 -->
   <section id="tab-study" class="hide">
     <div class="card">
+      <select id="studyDeck" style="width:100%;margin-bottom:12px"></select>
       <div style="display:flex;justify-content:center;margin-bottom:14px">
         <button class="modeBtn on" data-mode="mean">意味</button>
         <button class="modeBtn" data-mode="pron">発音</button>
@@ -140,7 +148,7 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const LS = { key:'vocab_apikey', model:'vocab_model', deck:'vocab_deck' };
+const LS = { key:'vocab_apikey', model:'vocab_model', deck:'vocab_deck', decks:'vocab_decks' };
 
 // ---- タブ切替 ----
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
@@ -264,30 +272,76 @@ function rowHtml(w='',p='',m=''){
 function fillResult(items){
   $('#resultTbl tbody').innerHTML = items.map(i=>rowHtml(i.word,i.pronunciation,i.meaning)).join('');
   $('#resultCard').classList.remove('hide');
+  refreshTargetDeck();
 }
 $('#addRow').onclick = () => $('#resultTbl tbody').insertAdjacentHTML('beforeend', rowHtml());
+
+// ---- 単語帳データ(複数デッキ) ----
+function getDecks(){ try { return JSON.parse(localStorage.getItem(LS.decks))||[]; } catch { return []; } }
+function saveDecks(d){ localStorage.setItem(LS.decks, JSON.stringify(d)); }
+function newDeckId(){ return 'd' + Date.now() + Math.floor(Math.random()*1000); }
+function ensureDecks(){
+  let d = getDecks();
+  if (!d.length){
+    let old = [];
+    try { old = JSON.parse(localStorage.getItem(LS.deck)) || []; } catch {}
+    d = [{ id:newDeckId(), name:'マイ単語帳', cards:old }];
+    saveDecks(d);
+  }
+  return d;
+}
+let currentDeckId = ensureDecks()[0].id;
+function fillDeckOptions(sel, withNew){
+  const decks = getDecks();
+  sel.innerHTML = decks.map(d=>`<option value="${d.id}">${esc(d.name)}（${d.cards.length}）</option>`).join('')
+    + (withNew ? '<option value="__new__">＋ 新しい単語帳…</option>' : '');
+}
+function promptNewDeck(){
+  const name = (prompt('新しい単語帳の名前') || '').trim();
+  if (!name) return null;
+  const decks = getDecks();
+  const id = newDeckId();
+  decks.push({ id, name, cards:[] });
+  saveDecks(decks);
+  return id;
+}
+
+function refreshTargetDeck(){ fillDeckOptions($('#targetDeck'), true); $('#targetDeck').value = currentDeckId; }
+$('#targetDeck').onchange = () => {
+  if ($('#targetDeck').value === '__new__'){
+    const id = promptNewDeck();
+    if (id) currentDeckId = id;
+    refreshTargetDeck();
+  } else currentDeckId = $('#targetDeck').value;
+};
 $('#addDeck').onclick = () => {
-  const deck = getDeck();
+  let deckId = $('#targetDeck').value;
+  if (deckId === '__new__'){ const id = promptNewDeck(); if (!id) return; deckId = id; }
+  const decks = getDecks();
+  const deck = decks.find(x=>x.id===deckId);
+  if (!deck){ alert('追加先の単語帳を選んでください'); return; }
   let n = 0;
   $('#resultTbl tbody').querySelectorAll('tr').forEach(tr=>{
     const w = tr.querySelector('.c-word').value.trim();
     if (!w) return;
-    deck.push({ word:w, pron:tr.querySelector('.c-pron').value.trim(), mean:tr.querySelector('.c-mean').value.trim() });
+    deck.cards.push({ word:w, pron:tr.querySelector('.c-pron').value.trim(), mean:tr.querySelector('.c-mean').value.trim() });
     n++;
   });
-  saveDeck(deck);
-  alert(n + ' 語を単語帳に追加しました');
+  saveDecks(decks);
+  currentDeckId = deckId;
+  alert(`「${deck.name}」に ${n} 語を追加しました`);
   $('#resultCard').classList.add('hide');
   $('#resultTbl tbody').innerHTML='';
 };
 
-// ---- 単語帳データ ----
-function getDeck(){ try { return JSON.parse(localStorage.getItem(LS.deck))||[]; } catch { return []; } }
-function saveDeck(d){ localStorage.setItem(LS.deck, JSON.stringify(d)); }
 function renderDeck(){
-  const deck = getDeck();
-  $('#deckCount').textContent = deck.length + ' 語';
-  $('#deckList').innerHTML = deck.length ? deck.map((c,i)=>`
+  const decks = getDecks();
+  if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
+  fillDeckOptions($('#deckSelect'), false);
+  $('#deckSelect').value = currentDeckId;
+  const cards = decks.find(d=>d.id===currentDeckId).cards;
+  $('#deckCount').textContent = cards.length + ' 語';
+  $('#deckList').innerHTML = cards.length ? cards.map((c,i)=>`
     <div class="deck-item">
       <div>
         <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${fmtPron(c.pron)}]</span>`:''}</div>
@@ -296,17 +350,39 @@ function renderDeck(){
       <button class="del" onclick="delCard(${i})">削除</button>
     </div>`).join('') : '<p class="muted">まだ単語がありません</p>';
 }
-window.delCard = i => { const d=getDeck(); d.splice(i,1); saveDeck(d); renderDeck(); };
-$('#clearDeck').onclick = () => { if(confirm('すべて削除しますか?')){ saveDeck([]); renderDeck(); } };
+$('#deckSelect').onchange = () => { currentDeckId = $('#deckSelect').value; renderDeck(); };
+$('#newDeck').onclick = () => { const id = promptNewDeck(); if (id){ currentDeckId = id; renderDeck(); } };
+$('#delDeck').onclick = () => {
+  const decks = getDecks();
+  if (decks.length <= 1){ alert('単語帳は最低1つ必要です'); return; }
+  const deck = decks.find(d=>d.id===currentDeckId);
+  if (!confirm(`「${deck.name}」を削除しますか?(中の単語も消えます)`)) return;
+  const left = decks.filter(d=>d.id!==currentDeckId);
+  saveDecks(left);
+  currentDeckId = left[0].id;
+  renderDeck();
+};
+window.delCard = i => {
+  const decks = getDecks();
+  const deck = decks.find(d=>d.id===currentDeckId);
+  deck.cards.splice(i,1);
+  saveDecks(decks);
+  renderDeck();
+};
 
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
 let studyIdx=0, studyStage=0, studyMode='mean';
+function studyCards(){ const d = getDecks().find(x=>x.id===currentDeckId); return d ? d.cards : []; }
 function renderStudy(){
-  const deck = getDeck();
+  const decks = getDecks();
+  if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
+  fillDeckOptions($('#studyDeck'), false);
+  $('#studyDeck').value = currentDeckId;
+  const cards = studyCards();
   const el = $('#flash');
-  if (!deck.length){ el.innerHTML='<span class="muted">単語帳が空です</span>'; el.onclick=null; return; }
-  if (studyIdx>=deck.length) studyIdx=0;
-  const c = deck[studyIdx];
+  if (!cards.length){ el.innerHTML='<span class="muted">この単語帳は空です</span>'; el.onclick=null; return; }
+  if (studyIdx>=cards.length) studyIdx=0;
+  const c = cards[studyIdx];
   if (studyStage===0){
     el.innerHTML = `<div class="big">${esc(c.word)}</div><div class="muted">（タップで${studyMode==='mean'?'意味':'発音'}）</div>`;
   } else {
@@ -315,17 +391,18 @@ function renderStudy(){
       body = `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`;
     } else {
       body = `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`
-           + `<div class="muted" style="margin-top:4px"><span class="acc1">赤</span>=アクセント(強く読む位置)</div>`;
+           + `<div class="muted" style="margin-top:4px">´ = アクセント(強く読む位置)</div>`;
     }
-    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${deck.length}（タップで次へ)</div>`;
+    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}（タップで次へ)</div>`;
   }
   el.onclick = () => {
-    const d = getDeck(); if (!d.length) return;
+    const cs = studyCards(); if (!cs.length) return;
     if (studyStage===0) studyStage=1;
-    else { studyStage=0; studyIdx=(studyIdx+1)%d.length; }
+    else { studyStage=0; studyIdx=(studyIdx+1)%cs.length; }
     renderStudy();
   };
 }
+$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyIdx=0; studyStage=0; renderStudy(); };
 document.querySelectorAll('.modeBtn').forEach(b => b.onclick = () => {
   document.querySelectorAll('.modeBtn').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
