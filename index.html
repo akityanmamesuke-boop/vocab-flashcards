@@ -128,6 +128,9 @@
           <label style="margin:0">読み上げ言語</label>
           <select id="deckLangSel" style="flex:1"></select>
         </div>
+        <div class="row" style="margin-top:10px">
+          <button class="ghost btn" id="addCardBtn">＋ 単語を追加</button>
+        </div>
         <div id="deckList"></div>
       </div>
     </div>
@@ -336,6 +339,7 @@ function ensureDecks(){
   return d;
 }
 let currentDeckId = ensureDecks()[0].id;
+let editingIdx = -1;
 function fillDeckOptions(sel, withNew){
   const decks = getDecks();
   sel.innerHTML = decks.map(d=>`<option value="${d.id}">${esc(d.name)}（${d.cards.length}）</option>`).join('')
@@ -409,20 +413,56 @@ function renderDeckDetail(){
   $('#deckTitle').textContent = deck.name;
   $('#deckCount').textContent = `(${deck.cards.length} 語)`;
   $('#deckLangSel').value = deck.lang || '';
-  $('#deckList').innerHTML = deck.cards.length ? deck.cards.map((c,i)=>`
-    <div class="deck-item">
+  $('#deckList').innerHTML = deck.cards.length ? deck.cards.map((c,i)=>{
+    if (i===editingIdx){
+      return `<div class="deck-item" style="display:block">
+        <input type="text" id="edWord" placeholder="単語" value="${esc(c.word)}" style="margin-bottom:6px">
+        <input type="text" id="edPron" placeholder="発音記号" value="${esc(c.pron||'')}" style="margin-bottom:6px">
+        <input type="text" id="edMean" placeholder="意味" value="${esc(c.mean||'')}" style="margin-bottom:6px">
+        <div class="row">
+          <button class="btn" onclick="saveEdit()">保存</button>
+          <button class="ghost btn" onclick="cancelEdit()">キャンセル</button>
+        </div>
+      </div>`;
+    }
+    return `<div class="deck-item">
       <div>
         <div class="word">${esc(c.word)} ${c.pron?`<span class="pron">[${fmtPron(c.pron)}]</span>`:''}</div>
         <div class="muted">${esc(c.mean)}</div>
       </div>
       <span style="display:flex;gap:8px;align-items:center">
         <button class="spk sm" onclick="speakDeckCard(${i})">🔊</button>
+        <button class="del" style="color:var(--accent)" onclick="editCard(${i})">編集</button>
         <button class="del" onclick="delCard(${i})">削除</button>
       </span>
-    </div>`).join('') : '<p class="muted">まだ単語がありません</p>';
+    </div>`;
+  }).join('') : '<p class="muted">まだ単語がありません</p>';
 }
+window.editCard = i => { editingIdx = i; renderDeckDetail(); };
+window.saveEdit = () => {
+  const w = $('#edWord').value.trim();
+  if (!w){ alert('単語を入力してください'); return; }
+  const decks = getDecks();
+  const deck = decks.find(d=>d.id===currentDeckId);
+  deck.cards[editingIdx] = { word:w, pron:$('#edPron').value.trim(), mean:$('#edMean').value.trim() };
+  saveDecks(decks); editingIdx = -1; renderDeckDetail();
+};
+window.cancelEdit = () => {
+  const decks = getDecks();
+  const deck = decks.find(d=>d.id===currentDeckId);
+  const c = deck.cards[editingIdx];
+  if (c && !c.word && !c.pron && !c.mean){ deck.cards.splice(editingIdx,1); saveDecks(decks); }
+  editingIdx = -1; renderDeckDetail();
+};
+$('#addCardBtn').onclick = () => {
+  const decks = getDecks();
+  const deck = decks.find(d=>d.id===currentDeckId);
+  deck.cards.push({ word:'', pron:'', mean:'' });
+  saveDecks(decks);
+  editingIdx = deck.cards.length - 1; renderDeckDetail();
+};
 function showDeckList(){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
-window.openDeck = id => { currentDeckId = id; $('#deckListView').classList.add('hide'); $('#deckDetailView').classList.remove('hide'); renderDeckDetail(); };
+window.openDeck = id => { currentDeckId = id; editingIdx = -1; $('#deckListView').classList.add('hide'); $('#deckDetailView').classList.remove('hide'); renderDeckDetail(); };
 $('#backToDecks').onclick = showDeckList;
 $('#newDeck').onclick = () => { const id = promptNewDeck(); if (id) renderDeck(); };
 $('#delDeck').onclick = () => {
