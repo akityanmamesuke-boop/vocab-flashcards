@@ -137,7 +137,6 @@
         <button class="modeBtn" data-order="rand">ランダム</button>
       </div>
       <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
-      <p class="muted" style="text-align:center">カードをタップ:単語 →(タップ)→ 答え →(タップ)→ 次の単語</p>
     </div>
   </section>
 
@@ -427,16 +426,12 @@ function renderStudy(){
   if (studyIdx >= studyOrder.length) studyIdx=0;
   const c = cards[studyOrder[studyIdx]];
   if (studyStage===0){
-    el.innerHTML = `<div class="big">${esc(c.word)}</div><div class="muted">（タップで${studyMode==='mean'?'意味':'発音'}）</div>`;
+    el.innerHTML = `<div class="big">${esc(c.word)}</div>`;
   } else {
-    let body;
-    if (studyMode==='mean'){
-      body = `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`;
-    } else {
-      body = `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`
-           + `<div class="muted" style="margin-top:4px">´ = アクセント(強く読む位置)</div>`;
-    }
-    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}（${studyOrderType==='rand'?'ランダム':'順番'}・タップで次へ)</div>`;
+    const body = studyMode==='mean'
+      ? `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`
+      : `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`;
+    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}</div>`;
   }
   el.onclick = () => {
     if (!studyCards().length) return;
