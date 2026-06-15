@@ -43,9 +43,10 @@
   @keyframes spin { to { transform:rotate(360deg); } }
   .hide { display:none; }
   #installBtn { margin-top:8px; }
-  .modeBtn { padding:8px 20px; border:1px solid var(--accent); background:#fff; color:var(--accent); font-size:14px; cursor:pointer; }
+  .modeBtn { padding:8px 16px; border:1px solid var(--accent); background:#fff; color:var(--accent); font-size:14px; cursor:pointer; }
   .modeBtn:first-child { border-radius:8px 0 0 8px; }
-  .modeBtn:last-child { border-radius:0 8px 8px 0; border-left:0; }
+  .modeBtn:last-child { border-radius:0 8px 8px 0; }
+  .modeBtn + .modeBtn { border-left:0; }
   .modeBtn.on { background:var(--accent); color:#fff; }
   .acc1, .acc2 { position:relative; display:inline-block; }
   .acc1::before, .acc2::before { position:absolute; left:0; right:0; top:-0.26em; text-align:center; font-size:0.8em; line-height:1; }
@@ -134,6 +135,7 @@
       <div style="display:flex;justify-content:center;margin-bottom:14px">
         <button class="modeBtn on" data-mode="mean">意味</button>
         <button class="modeBtn" data-mode="pron">発音</button>
+        <button class="modeBtn" data-mode="word">単語のみ</button>
       </div>
       <div style="display:flex;justify-content:center;margin-bottom:14px">
         <button class="modeBtn on" data-order="seq">順番</button>
@@ -447,6 +449,10 @@ function buildOrder(){
   if (studyOrderType==='rand') shuffle(studyOrder);
   studyIdx=0; studyStage=0;
 }
+function advanceCard(){
+  studyIdx++;
+  if (studyIdx >= studyOrder.length){ if (studyOrderType==='rand') buildOrder(); else studyIdx=0; }
+}
 function renderStudy(){
   const decks = getDecks();
   if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
@@ -458,21 +464,22 @@ function renderStudy(){
   if (studyOrder.length !== cards.length) buildOrder();
   if (studyIdx >= studyOrder.length) studyIdx=0;
   const c = cards[studyOrder[studyIdx]];
-  if (studyStage===0){
+  const num = `<div class="muted">${studyIdx+1} / ${cards.length}</div>`;
+  if (studyMode==='word'){
+    el.innerHTML = `<div class="big">${esc(c.word)}</div>${num}`;
+  } else if (studyStage===0){
     el.innerHTML = `<div class="big">${esc(c.word)}</div>`;
   } else {
     const body = studyMode==='mean'
       ? `<div class="big" style="font-size:26px">${esc(c.mean)||'(意味なし)'}</div>`
       : `<div class="big pron" style="font-size:30px">${c.pron?'['+fmtPron(c.pron)+']':'(発音なし)'}</div>`;
-    el.innerHTML = `${body}<div class="muted">${studyIdx+1} / ${cards.length}</div>`;
+    el.innerHTML = `${body}${num}`;
   }
   el.onclick = () => {
     if (!studyCards().length) return;
-    if (studyStage===0) studyStage=1;
-    else {
-      studyStage=0; studyIdx++;
-      if (studyIdx >= studyOrder.length){ if (studyOrderType==='rand') buildOrder(); else studyIdx=0; }
-    }
+    if (studyMode==='word'){ studyStage=0; advanceCard(); }
+    else if (studyStage===0){ studyStage=1; }
+    else { studyStage=0; advanceCard(); }
     renderStudy();
   };
 }
