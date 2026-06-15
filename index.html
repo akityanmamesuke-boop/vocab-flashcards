@@ -152,20 +152,36 @@ $('#saveKey').onclick = () => {
   setTimeout(()=>$('#keyMsg').textContent='',1500);
 };
 
-// ---- 画像選択 ----
+// ---- 画像選択(大きい写真はメモリ節約のため縮小・圧縮してから扱う) ----
 let imgB64 = null, imgMime = null;
 $('#file').onchange = e => {
   const f = e.target.files[0];
   if (!f) return;
-  imgMime = f.type;
-  const r = new FileReader();
-  r.onload = () => {
-    imgB64 = r.result.split(',')[1];
-    $('#preview').src = r.result;
+  $('#analyze').disabled = true;
+  $('#scanMsg').textContent = '画像を準備中…';
+  const objUrl = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 1600;
+    let w = img.naturalWidth, h = img.naturalHeight;
+    const scale = Math.min(1, MAX / Math.max(w, h));
+    w = Math.round(w * scale); h = Math.round(h * scale);
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(objUrl);
+    let dataUrl;
+    try { dataUrl = cv.toDataURL('image/jpeg', 0.8); }
+    catch (err) { $('#scanMsg').textContent = '画像の処理に失敗しました'; return; }
+    imgMime = 'image/jpeg';
+    imgB64 = dataUrl.split(',')[1];
+    $('#preview').src = dataUrl;
     $('#preview').style.display = 'block';
     $('#analyze').disabled = false;
+    $('#scanMsg').textContent = '';
   };
-  r.readAsDataURL(f);
+  img.onerror = () => { URL.revokeObjectURL(objUrl); $('#scanMsg').textContent = '画像を読み込めませんでした'; };
+  img.src = objUrl;
 };
 
 // ---- Gemini 解析 ----
