@@ -42,7 +42,7 @@
   .flash .big { font-size:34px; font-weight:700; }
   .spinner { display:inline-block; width:16px; height:16px; border:3px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin .8s linear infinite; vertical-align:middle; }
   @keyframes spin { to { transform:rotate(360deg); } }
-  .hide { display:none; }
+  .hide { display:none !important; }
   #installBtn { margin-top:8px; }
   .modeBtn { padding:8px 14px; border:1px solid var(--accent); border-radius:8px; background:#fff; color:var(--accent); font-size:14px; cursor:pointer; }
   .modeBtn.on { background:var(--accent); color:#fff; }
@@ -68,6 +68,7 @@
   <button data-tab="scan" class="on">📷 取り込み</button>
   <button data-tab="deck">📚 単語帳</button>
   <button data-tab="study">🎴 学習</button>
+  <button data-tab="review">❌ 間違い</button>
   <button data-tab="set">⚙ 設定</button>
 </div>
 <main>
@@ -148,18 +149,16 @@
   <section id="tab-study" class="hide">
     <div class="card">
       <select id="studyDeck" style="width:100%;margin-bottom:12px"></select>
-      <div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="modeBtn on" data-mode="mean">意味</button>
-        <button class="modeBtn" data-mode="pron">発音</button>
-        <button class="modeBtn" data-mode="word">単語のみ</button>
-        <button class="modeBtn" data-mode="meanrev">意味→単語</button>
-        <button class="modeBtn" data-mode="pronrev">発音→単語</button>
-      </div>
-      <div style="display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="modeBtn on" data-order="seq">順番</button>
-        <button class="modeBtn" data-order="rand">ランダム</button>
-      </div>
+      <select id="mistakeSel" style="width:100%;margin-bottom:12px"></select>
       <div class="flash" id="flash"><span class="muted">単語帳が空です</span></div>
+    </div>
+  </section>
+
+  <!-- 間違い復習 -->
+  <section id="tab-review" class="hide">
+    <div class="card">
+      <select id="reviewSel" style="width:100%;margin-bottom:12px"></select>
+      <div class="flash" id="reviewFlash"><span class="muted">間違えた単語はまだありません</span></div>
     </div>
   </section>
 
@@ -178,6 +177,21 @@
       </p>
       <label style="margin-top:12px">使用モデル</label>
       <input type="text" id="model" value="gemini-2.5-flash">
+    </div>
+    <div class="card">
+      <label>学習カードの表示</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 14px">
+        <button class="modeBtn on" data-mode="mean">意味</button>
+        <button class="modeBtn" data-mode="pron">発音</button>
+        <button class="modeBtn" data-mode="word">単語のみ</button>
+        <button class="modeBtn" data-mode="meanrev">意味→単語</button>
+        <button class="modeBtn" data-mode="pronrev">発音→単語</button>
+      </div>
+      <label>出題順</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button class="modeBtn on" data-order="seq">順番</button>
+        <button class="modeBtn" data-order="rand">ランダム</button>
+      </div>
     </div>
     <div class="card">
       <label>アプリとして使う</label>
@@ -201,16 +215,17 @@
 
 <script>
 const $ = s => document.querySelector(s);
-const LS = { key:'vocab_apikey', model:'vocab_model', deck:'vocab_deck', decks:'vocab_decks' };
+const LS = { key:'vocab_apikey', model:'vocab_model', deck:'vocab_deck', decks:'vocab_decks', mode:'vocab_mode', order:'vocab_order' };
 
 // ---- タブ切替 ----
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('on'));
   b.classList.add('on');
-  ['scan','deck','study','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
+  ['scan','deck','study','review','set'].forEach(t => $('#tab-'+t).classList.add('hide'));
   $('#tab-'+b.dataset.tab).classList.remove('hide');
   if (b.dataset.tab==='deck'){ $('#deckDetailView').classList.add('hide'); $('#deckListView').classList.remove('hide'); renderDeck(); }
-  if (b.dataset.tab==='study') { studyIdx=0; studyStage=0; studyOrder=[]; studyDone=false; renderStudy(); }
+  if (b.dataset.tab==='study') { curView='study'; studyIdx=0; studyStage=0; studyOrder=[]; studyDone=false; studyMistakeMode=null; renderStudy(); }
+  if (b.dataset.tab==='review') { curView='review'; enterReview(); }
 });
 
 // ---- 設定 ----
@@ -246,6 +261,7 @@ function closeCamera(){
   $('#camView').classList.add('hide');
 }
 $('#camCancel').onclick = closeCamera;
+closeCamera(); // 起動時はカメラを必ず閉じた状態にする
 $('#camFlip').onclick = async () => {
   camFacing = camFacing === 'environment' ? 'user' : 'environment';
   if (camStream) camStream.getTracks().forEach(t=>t.stop());
@@ -397,6 +413,25 @@ function fillDeckOptions(sel, withNew){
   const decks = getDecks();
   sel.innerHTML = decks.map(d=>`<option value="${d.id}">${esc(d.name)}（${d.cards.length}）</option>`).join('')
     + (withNew ? '<option value="__new__">＋ 新しい単語帳…</option>' : '');
+}
+function fillMistakeOptions(){
+  const decks = getDecks();
+  const total = decks.reduce((s,d)=>s+((d.mistakes||[]).length),0);
+  const withMiss = decks.filter(d=>(d.mistakes||[]).length);
+  let html = '<option value="">⚠ 間違えた単語を復習…</option>';
+  if (total){
+    html += `<option value="all">すべての単語帳の間違い（${total}）</option>`;
+    html += withMiss.map(d=>`<option value="${d.id}">「${esc(d.name)}」の間違い（${d.mistakes.length}）</option>`).join('');
+  }
+  $('#mistakeSel').innerHTML = html;
+}
+function fillReviewOptions(){
+  const decks = getDecks();
+  const total = decks.reduce((s,d)=>s+((d.mistakes||[]).length),0);
+  const withMiss = decks.filter(d=>(d.mistakes||[]).length);
+  if (!total){ $('#reviewSel').innerHTML = '<option value="">間違いはまだありません</option>'; return; }
+  $('#reviewSel').innerHTML = `<option value="all">すべての間違い（${total}）</option>`
+    + withMiss.map(d=>`<option value="${d.id}">「${esc(d.name)}」（${d.mistakes.length}）</option>`).join('');
 }
 function promptNewDeck(){
   const name = (prompt('新しい単語帳の名前') || '').trim();
@@ -580,9 +615,26 @@ function checkImport(){
 }
 
 // ---- 学習(タップで 単語 → 答え → 次の単語) ----
-let studyIdx=0, studyStage=0, studyMode='mean', studyOrderType='seq', studyOrder=[], studyDone=false;
+let studyIdx=0, studyStage=0, studyMode=localStorage.getItem(LS.mode)||'mean', studyOrderType=localStorage.getItem(LS.order)||'seq', studyOrder=[], studyDone=false;
+let studyMistakeMode=null; // null=通常 / 'all'=全単語帳の間違い / deckId=その単語帳の間違い
+let curView='study'; // 'study'=学習タブ / 'review'=間違いタブ
+function enterReview(){
+  const total = getDecks().reduce((s,d)=>s+((d.mistakes||[]).length),0);
+  studyMistakeMode = total ? (studyMistakeMode || 'all') : null;
+  studyIdx=0; studyStage=0; studyOrder=[]; studyDone=false; renderStudy();
+}
 function studyCards(){
-  const d = getDecks().find(x=>x.id===currentDeckId);
+  const decks = getDecks();
+  if (studyMistakeMode==='all'){
+    const out=[];
+    decks.forEach(d=>(d.mistakes||[]).forEach(c=>out.push({...c,_deckId:d.id})));
+    return out;
+  }
+  if (studyMistakeMode){
+    const d = decks.find(x=>x.id===studyMistakeMode);
+    return d ? (d.mistakes||[]).map(c=>({...c,_deckId:d.id})) : [];
+  }
+  const d = decks.find(x=>x.id===currentDeckId);
   return d ? d.cards : [];
 }
 function shuffle(a){ for (let i=a.length-1; i>0; i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
@@ -610,19 +662,54 @@ window.speakDeckCard = i => {
   const d = getDecks().find(x=>x.id===currentDeckId);
   if (d && d.cards[i]) speak(d.cards[i].word, d.lang);
 };
+// 間違えた単語を、その単語が属する単語帳の間違いリストに追加
+window.markMistake = ev => {
+  if (ev) ev.stopPropagation();
+  const c = studyCards()[studyOrder[studyIdx]];
+  if (!c) return;
+  const decks = getDecks();
+  const did = c._deckId || currentDeckId;
+  const d = decks.find(x=>x.id===did);
+  if (!d) return;
+  if (!d.mistakes) d.mistakes = [];
+  if (!d.mistakes.some(x=>x.word===c.word && x.mean===c.mean)) d.mistakes.push({ word:c.word, pron:c.pron, mean:c.mean });
+  saveDecks(decks);
+  if (ev && ev.target){ ev.target.textContent='✓ 追加済み'; ev.target.disabled=true; }
+};
 
 function advanceCard(){
   studyIdx++;
   if (studyIdx >= studyOrder.length) studyDone = true;
 }
 window.studyAgain = () => { studyDone=false; buildOrder(); renderStudy(); };
+window.studyMistakesFromEnd = () => {
+  // 今やっていた単語帳の間違い(間違い学習中なら同じ範囲)を復習
+  const target = studyMistakeMode || currentDeckId;
+  const decks = getDecks();
+  const has = target==='all'
+    ? decks.some(d=>(d.mistakes||[]).length)
+    : (decks.find(d=>d.id===target)?.mistakes||[]).length;
+  if (!has){ alert('間違えた単語はありません'); return; }
+  studyMistakeMode = target; studyDone=false; studyOrder=[]; studyStage=0; studyIdx=0; renderStudy();
+};
 window.studyEnd = () => { document.querySelector('.tabs button[data-tab="deck"]').click(); };
 function renderStudy(){
   const decks = getDecks();
   if (!decks.find(d=>d.id===currentDeckId)) currentDeckId = decks[0].id;
-  fillDeckOptions($('#studyDeck'), false);
-  $('#studyDeck').value = currentDeckId;
-  const el = $('#flash');
+  let el;
+  if (curView==='review'){
+    fillReviewOptions();
+    $('#reviewSel').value = studyMistakeMode || '';
+    el = $('#reviewFlash');
+    if (!studyMistakeMode){ el.innerHTML='<span class="muted">間違えた単語はまだありません</span>'; el.onclick=null; studyOrder=[]; return; }
+  } else {
+    fillDeckOptions($('#studyDeck'), false);
+    $('#studyDeck').value = currentDeckId;
+    fillMistakeOptions();
+    $('#mistakeSel').value = studyMistakeMode || '';
+    $('#studyDeck').disabled = !!studyMistakeMode;
+    el = $('#flash');
+  }
   const cards = studyCards();
   if (!cards.length){ el.innerHTML='<span class="muted">この単語帳は空です</span>'; el.onclick=null; studyOrder=[]; return; }
   if (studyOrder.length !== cards.length) buildOrder();
@@ -632,6 +719,7 @@ function renderStudy(){
       <div class="muted" style="margin-bottom:16px">${cards.length}語 完了</div>
       <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
         <button class="btn" onclick="studyAgain()">もう一度</button>
+        <button class="ghost btn" onclick="studyMistakesFromEnd()">間違えたところをやる</button>
         <button class="ghost btn" onclick="studyEnd()">終了</button>
       </div>`;
     return;
@@ -652,7 +740,8 @@ function renderStudy(){
     else el.innerHTML = `${wordHtml}${spk}`;
   } else {
     const body = studyMode==='mean' ? meanHtml : studyMode==='pron' ? pronHtml : wordHtml;
-    el.innerHTML = `${body}${spk}${num}`;
+    const miss = `<div><button class="missBtn" onclick="markMistake(event)">✗ 間違えた</button></div>`;
+    el.innerHTML = `${body}${spk}${miss}${num}`;
   }
   el.onclick = () => {
     if (!studyCards().length) return;
@@ -662,17 +751,30 @@ function renderStudy(){
     renderStudy();
   };
 }
-$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy(); };
+$('#studyDeck').onchange = () => { currentDeckId = $('#studyDeck').value; studyMistakeMode=null; studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy(); };
+$('#mistakeSel').onchange = () => {
+  studyMistakeMode = $('#mistakeSel').value || null;
+  studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy();
+};
+$('#reviewSel').onchange = () => {
+  studyMistakeMode = $('#reviewSel').value || null;
+  studyOrder=[]; studyStage=0; studyIdx=0; studyDone=false; renderStudy();
+};
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   studyMode = b.dataset.mode;
+  localStorage.setItem(LS.mode, studyMode);
   document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x.dataset.mode===studyMode));
   studyStage = 0; studyDone = false; renderStudy();
 });
 document.querySelectorAll('[data-order]').forEach(b => b.onclick = () => {
   studyOrderType = b.dataset.order;
+  localStorage.setItem(LS.order, studyOrderType);
   document.querySelectorAll('[data-order]').forEach(x => x.classList.toggle('on', x.dataset.order===studyOrderType));
   buildOrder(); renderStudy();
 });
+// 保存済みの表示設定をボタンに反映
+document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x.dataset.mode===studyMode));
+document.querySelectorAll('[data-order]').forEach(x => x.classList.toggle('on', x.dataset.order===studyOrderType));
 
 function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 // 発音記号の強勢記号(ˈ第一・ˌ第二)を消し、その音節内の最初の母音の真上にアクセント記号を表示
